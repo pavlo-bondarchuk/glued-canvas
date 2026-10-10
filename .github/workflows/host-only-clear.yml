@@ -1,0 +1,38 @@
+name: Host-only clear patch
+on:
+  push:
+    paths:
+      - .github/workflows/host-only-clear.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch index
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace("function cmd(d,send=false){if(d.type==='clear'){", "function cmd(d,send=false){if(d.type==='clear'&&send&&role!=='host'){toast('Очистить холст может только ведущий');return}if(d.type==='clear'){")
+          s=s.replace("render();scheduleSave();if(send)commands?.send(d)", "render();scheduleSave();if(send)commands?.send({...d,actorRole:role})")
+          s=s.replace("$('#clearBtn').onclick=()=>confirm('Очистить общий рисунок?')&&cmd({type:'clear'},1);", "$('#clearBtn').onclick=()=>{if(role!=='host')return toast('Очистить холст может только ведущий');confirm('Очистить общий рисунок?')&&cmd({type:'clear'},1)};")
+          s=s.replace("function openApp(){setup.classList.add('hidden');app.classList.remove('hidden');$('#codeBadge').textContent=code;$('#roleBadge').textContent=role==='host'?'ведущий':'участник';$('#myUserDot').style.background=MYCOLOR;$('#myUserLabel').textContent=role==='host'?'Вы · ведущий':'Вы · участник';count()}", "function openApp(){setup.classList.add('hidden');app.classList.remove('hidden');$('#codeBadge').textContent=code;$('#roleBadge').textContent=role==='host'?'ведущий':'участник';$('#myUserDot').style.background=MYCOLOR;$('#myUserLabel').textContent=role==='host'?'Вы · ведущий':'Вы · участник';$('#clearBtn').classList.toggle('hidden',role!=='host');count()}")
+          s=s.replace("commands.onMessage=d=>cmd(d);", "commands.onMessage=d=>{if(d.type==='clear'&&d.actorRole!=='host')return;cmd(d)};")
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          rm .github/workflows/host-only-clear.yml
+          git config user.name "glued-canvas-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Restrict canvas clear to host"
+          git push
